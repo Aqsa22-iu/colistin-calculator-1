@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Colistimethate Sodium Dose Calculator</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#f7fafc;color:#0f172a;padding:20px}
+    .card{background:white;border-radius:12px;box-shadow:0 6px 20px rgba(2,6,23,0.08);padding:18px;max-width:900px;margin:8px auto}
+    h1{font-size:20px;margin:0 0 8px}
+    label{display:block;margin-top:10px;font-weight:600}
+    input,select{width:100%;padding:8px;border-radius:8px;border:1px solid #e6edf3;margin-top:6px}
+    .row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .row-2{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    button{margin-top:12px;padding:10px 14px;border-radius:10px;border:0;background:#0f172a;color:white;font-weight:700}
+    pre{background:#0f172a;color:#e6edf3;padding:12px;border-radius:8px;white-space:pre-wrap}
+    .small{font-size:13px;color:#475569}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Colistimethate Sodium Dose Calculator</h1>
+    <div class="small">Outputs: Loading dose, Maintenance regimen & frequency, and vial combination suggestions (vials: 1, 2, 3, 4.5 MIU).</div>
+
+    <label>Age (years)</label>
+    <input id="age" type="number" value="30" min="0" />
+
+    <div class="row">
+      <div>
+        <label>Patient type</label>
+        <select id="ptype">
+          <option value="adult">Adult</option>
+          <option value="pediatric">Pediatric</option>
+        </select>
+      </div>
+      <div>
+        <label>Weight (kg)</label>
+        <input id="weight" type="number" value="70" min="0" />
+      </div>
+      <div>
+        <label>Condition</label>
+        <select id="condition">
+          <option value="healthy">Healthy</option>
+          <option value="renal">Renal compromised</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="renalFields" style="display:none">
+      <div class="row-2">
+        <div>
+          <label>Creatinine clearance (CrCl, mL/min)</label>
+          <input id="crcl" type="number" value="80" min="0" />
+        </div>
+        <div>
+          <label>Hemodialysis?</label>
+          <select id="hd">
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <button onclick="calculate()">Calculate dose</button>
+
+    <h2 style="margin-top:18px">Results</h2>
+    <pre id="out">No calculation yet — click Calculate.</pre>
+    <div class="small" style="margin-top:10px">Note: This calculator implements commonly used dosing conventions (loading dose ~9 MIU adult; pediatric 75,000 IU/kg). It is for educational / planning use only — always confirm with local guidelines and clinical judgement.</div>
+  </div>
+
+<script>
+function roundToNearest(val, choices){
+  // return combination of vials (greedy large-first) to reach >= val with minimal leftover
+  // choices sorted desc
+  choices = choices.slice().sort((a,b)=>b-a);
+  let best = null;
+  // brute force search for small counts: limit each vial count up to 6
+  const maxCount = 6;
+  function totalFor(counts){
+    let t=0; for(let i=0;i<counts.length;i++) t += counts[i]*choices[i]; return t;
+  }
+  // DFS
+  function dfs(idx, counts){
+    if(idx===choices.length){
+      let tot = totalFor(counts);
+      if(tot>=val){
+        let over = tot - val;
+        let pieces = counts.reduce((a,b)=>a+b,0);
+        if(!best || over < best.over || (over===best.over && pieces<best.pieces)){
+          best = {counts:counts.slice(), tot, over, pieces};
+        }
+      }
+      return;
+    }
+    for(let c=0;c<=maxCount;c++){
+      counts[idx]=c;
+      // prune if tot already too large? keep
+      dfs(idx+1,counts);
+    }
+    counts[idx]=0;
+  }
+  dfs(0,new Array(choices.length).fill(0));
+  if(!best) return null;
+  // create readable map
+  let map = {};
+  for(let i=0;i<choices.length;i++) if(best.counts[i]>0) map[choices[i]] = best.counts[i];
+  return {map, total:best.tot, waste:best.over};
+}
+
+function calcVialsForDose(miudose){
+  const vialChoices = [4.5,3,2,1];
+  return roundToNearest(miudose,vialChoices);
+}
+
+function calculate(){
+  const age = parseFloat(document.getElementById('age').value) || 0;
+  const ptype = document.getElementById('ptype').value;
+  const weight = parseFloat(document.getElementById('weight').value) || 0;
+  const condition = document.getElementById('condition').value;
+  const crcl = parseFloat(document.getElementById('crcl').value) || null;
+  const hd = document.getElementById('hd').value;
+
+  // Determine adult vs pediatric logic
+  const isPediatric = (ptype==='pediatric' && weight<40) || (ptype==='pediatric' && age<18 && weight<40);
+  const useAdultDosing = !isPediatric;
+
+  let loadingDoseMIU = 0;
+  let maintenancePerDayMIU = 0;
+  let frequency = '';
+  let regimenNote = '';
+
+  if(useAdultDosing){
+    // adult or pediatric >=40 kg -> adult dosing
+    loadingDoseMIU = 9.0; // common loading dose used in many resources
+    // maintenance default for normal renal
+    if(condition==='healthy'){
+      maintenancePerDayMIU = 9.0; // divided q8-12h
+      frequency = '3 doses/day (q8h) or 2-3 doses (q8-12h)';
+    } else {
+      // renal compromised -> use CrCl adjustments
+      if(isNaN(crcl) || crcl===null){
+        regimenNote = 'CrCl required to adjust dose for renal impairment.';
+        maintenancePerDayMIU = 6.0; frequency='2-3 doses/day (adjust based on CrCl)';
+      } else {
+        if(crcl>=50){ maintenancePerDayMIU = 6.0; frequency='3 doses/day (q8h)'; }
+        else if(crcl>=30){ maintenancePerDayMIU = 4.0; frequency='2 doses/day (q12h)'; }
+        else if(crcl>=10){ maintenancePerDayMIU = 2.0; frequency='1 dose/day (q24h)'; }
+        else { maintenancePerDayMIU = 2.0; frequency='1 dose every 24–48h; consider specialist advice'; }
+        if(hd==='yes'){
+          regimenNote = 'Hemodialysis: commonly 2 MIU after each HD session and 1 MIU on non-dialysis days — individualize based on timing of HD.';
+          // represent maintenance as a guideline
+        }
+      }
+    }
+  } else {
+    // pediatric <40kg
+    // loading 75,000 IU/kg = 75,000 IU/kg = 0.075 MIU/kg ? careful: 1 MIU = 1,000,000 IU. 75,000 IU/kg = 0.075 MIU/kg.
+    // So loading MIU = 0.075 * weight
+    loadingDoseMIU = +(0.075 * weight).toFixed(3);
+    // maintenance 75k-150k IU/kg/day -> 0.075 - 0.15 MIU/kg/day
+    const minDaily = 0.075 * weight;
+    const maxDaily = 0.15 * weight;
+    // choose middle ~0.1125 MIU/kg/day
+    maintenancePerDayMIU = +((0.1125 * weight).toFixed(3));
+    frequency = 'Usually divided into 3 doses/day (q8h) — adjust per renal function';
+    if(condition==='renal'){
+      if(isNaN(crcl) || crcl===null) regimenNote = 'CrCl suggested to tailor pediatric renal dosing.';
+      else {
+        if(crcl<30) regimenNote = 'Consider reducing frequency or dose for CrCl <30 mL/min and consult specialist.';
+      }
+      if(hd==='yes') regimenNote += ' Hemodialysis: individualize; consider dosing after HD.';
+    }
+  }
+
+  // create per-dose amount if maintenancePerDayMIU defined
+  let perDoseMIU = null;
+  if(maintenancePerDayMIU>0){
+    // choose frequency from frequency string heuristic
+    if(frequency.includes('q8')) perDoseMIU = +(maintenancePerDayMIU/3).toFixed(3);
+    else if(frequency.includes('3 doses')) perDoseMIU = +(maintenancePerDayMIU/3).toFixed(3);
+    else if(frequency.includes('2 doses')||frequency.includes('q12')) perDoseMIU = +(maintenancePerDayMIU/2).toFixed(3);
+    else perDoseMIU = +maintenancePerDayMIU.toFixed(3);
+  }
+
+  // vial suggestions for loading and per-dose
+  const loadVials = calcVialsForDose(loadingDoseMIU);
+  const maintVials = calcVialsForDose(perDoseMIU || maintenancePerDayMIU);
+
+  // build output
+  let out = [];
+  out.push('Patient summary:');
+  out.push(` • Age: ${age} yrs, Type: ${ptype}, Weight: ${weight} kg, Condition: ${condition}${condition==='renal' && crcl?(' (CrCl '+crcl+' mL/min)'):''}${condition==='renal' && hd==='yes'?' (on hemodialysis)': ''}`);
+  out.push('');
+  out.push('Loading dose:');
+  out.push(` • Calculated: ${loadingDoseMIU} MIU IV once`);
+  if(loadVials) {
+    out.push(` • Suggested vial combination: total ${loadVials.total} MIU -> ${Object.entries(loadVials.map).map(([k,v])=>v+ ' x ' +k+ ' MIU').join(', ')}`);
+    if(loadVials.waste>0) out.push(`   (waste/overfill: ${loadVials.waste.toFixed(2)} MIU above target)`);
+  } else out.push(' • No vial suggestion available');
+
+  out.push('');
+  out.push('Maintenance regimen:');
+  if(maintenancePerDayMIU>0){
+    out.push(` • Daily maintenance target: ${maintenancePerDayMIU} MIU/day`);
+    out.push(` • Frequency suggestion: ${frequency}`);
+    out.push(` • Per-dose (approx): ${perDoseMIU?perDoseMIU+' MIU per dose':(maintenancePerDayMIU+' MIU (single dose)')}`);
+    if(maintVials) out.push(` • Suggested vial combo for per-dose: total ${maintVials.total} MIU -> ${Object.entries(maintVials.map).map(([k,v])=>v+ ' x ' +k+ ' MIU').join(', ')}`);
+  } else {
+    out.push(' • Maintenance dose could not be calculated — check inputs.');
+  }
+
+  if(regimenNote) { out.push(''); out.push('Notes:'); out.push(' • '+regimenNote); }
+  out.push('');
+  out.push('Disclaimer: This calculator provides an estimate. Always verify dosing with local protocols, pharmacy and clinical guidance.');
+
+  document.getElementById('out').innerText = out.join('\n');
+}
+
+// show/hide renal fields
+document.getElementById('condition').addEventListener('change',function(e){
+  const v = e.target.value;
+  document.getElementById('renalFields').style.display = v==='renal' ? 'block' : 'none';
+});
+// initial hook
+if(document.getElementById('condition').value==='renal') document.getElementById('renalFields').style.display='block';
+</script>
+</body>
+</html>
