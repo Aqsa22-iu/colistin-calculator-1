@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Colistimethate Sodium Dose Calculator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f4f9ff; color: #333; }
+    h1 { text-align: center; color: #004080; }
+    .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    label { display: block; margin-top: 12px; font-weight: bold; }
+    input, select { width: 100%; padding: 8px; margin-top: 6px; border: 1px solid #ccc; border-radius: 6px; }
+    button { margin-top: 20px; padding: 12px; background: #004080; color: white; border: none; border-radius: 8px; cursor: pointer; }
+    button:hover { background: #0066cc; }
+    .result { margin-top: 20px; padding: 15px; background: #eaf4ff; border-left: 5px solid #004080; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Colistimethate Sodium Dose Calculator</h1>
+
+    <label>Age (years):</label>
+    <input type="number" id="age" placeholder="Enter age">
+
+    <label>Patient Type:</label>
+    <select id="type">
+      <option value="adult">Adult</option>
+      <option value="pediatric">Pediatric</option>
+    </select>
+
+    <label>Weight (kg):</label>
+    <input type="number" id="weight" placeholder="Enter weight">
+
+    <label>Condition:</label>
+    <select id="condition">
+      <option value="healthy">Healthy</option>
+      <option value="renal">Renal Compromised</option>
+    </select>
+
+    <div id="renalOptions" style="display:none;">
+      <label>Creatinine Clearance (CrCl, mL/min):</label>
+      <input type="number" id="crcl" placeholder="Enter CrCl">
+
+      <label>On Hemodialysis?</label>
+      <select id="hd">
+        <option value="no">No</option>
+        <option value="yes">Yes</option>
+      </select>
+    </div>
+
+    <button onclick="calculateDose()">Calculate Dose</button>
+
+    <div id="output" class="result" style="display:none;"></div>
+  </div>
+
+  <script>
+    const conditionEl = document.getElementById("condition");
+    const renalOptions = document.getElementById("renalOptions");
+
+    conditionEl.addEventListener("change", () => {
+      renalOptions.style.display = conditionEl.value === "renal" ? "block" : "none";
+    });
+
+    function calculateDose() {
+      const age = parseInt(document.getElementById("age").value);
+      const type = document.getElementById("type").value;
+      const weight = parseFloat(document.getElementById("weight").value);
+      const condition = document.getElementById("condition").value;
+      const crcl = parseInt(document.getElementById("crcl")?.value || 0);
+      const hd = document.getElementById("hd")?.value || "no";
+
+      let loading = "";
+      let maintenance = "";
+      let frequency = "";
+      let combo = "";
+
+      if (type === "adult") {
+        loading = "9 MIU (≈300 mg CBA)";
+        maintenance = "6–9 MIU/day (up to 12 MIU in severe cases)";
+        frequency = "2–3 divided doses";
+        combo = "Use 3 MIU + 4.5 MIU vials for flexibility";
+      } else {
+        if (weight < 40) {
+          loading = "Not required usually";
+          maintenance = "75,000–150,000 IU/kg/day";
+          frequency = "3 divided doses";
+          combo = "1 MIU vials (adjust per weight)";
+        } else {
+          loading = "9 MIU (≈300 mg CBA)";
+          maintenance = "6–9 MIU/day (up to 12 MIU)";
+          frequency = "2–3 divided doses";
+          combo = "2 MIU + 3 MIU vials as per requirement";
+        }
+      }
+
+      if (condition === "renal") {
+        if (hd === "yes") {
+          maintenance = "2.25–3 MIU on HD and non-HD days";
+          frequency = "Post-dialysis preferred";
+          combo = "Use 1 MIU + 2 MIU vials";
+        } else {
+          maintenance = "Adjust dose according to CrCl";
+          combo = "Flexible with all vials (1, 2, 3, 4.5 MIU)";
+        }
+      }
+
+      document.getElementById("output").style.display = "block";
+      document.getElementById("output").innerHTML = `
+        <h3>Recommended Dosing</h3>
+        <p><b>Loading Dose:</b> ${loading}</p>
+        <p><b>Maintenance Dose:</b> ${maintenance}</p>
+        <p><b>Frequency:</b> ${frequency}</p>
+        <p><b>Suggested Vial Combination:</b> ${combo}</p>
+      `;
+    }
+  </script>
+</body>
+</html>
